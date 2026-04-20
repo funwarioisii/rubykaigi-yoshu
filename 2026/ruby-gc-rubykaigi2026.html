@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruby GC の現在地 × RubyKaigi 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ruby-red: #CC342D;
+    --ruby-dark: #8B1A15;
+    --ruby-light: #FF6B63;
+    --bg-deep: #0D0D12;
+    --bg-card: #16161F;
+    --bg-card-hover: #1E1E2A;
+    --text-primary: #F0EDE6;
+    --text-secondary: #9B97A0;
+    --text-muted: #5E5B66;
+    --accent-blue: #5B8DEF;
+    --accent-cyan: #4ECDC4;
+    --accent-amber: #F2A93B;
+    --accent-violet: #9B72CF;
+    --accent-green: #6BCB77;
+    --border-subtle: rgba(240,237,230,0.08);
+    --border-glow: rgba(204,52,45,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    padding: 80px 0 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -120px; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(204,52,45,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--ruby-light);
+    border: 1px solid var(--border-glow);
+    padding: 6px 18px;
+    border-radius: 100px;
+    margin-bottom: 28px;
+    background: rgba(204,52,45,0.08);
+  }
+  .hero h1 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+  .hero h1 .accent { color: var(--ruby-red); }
+  .hero .subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+    max-width: 640px;
+    margin: 0 auto 12px;
+  }
+  .hero .venue {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* ─── SECTION ─── */
+  .section {
+    padding: 48px 0;
+    position: relative;
+  }
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(24px, 4vw, 36px);
+    font-weight: 900;
+    line-height: 1.2;
+    margin-bottom: 32px;
+  }
+
+  /* ─── TIMELINE ─── */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--ruby-red), var(--accent-violet), transparent);
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 28px;
+    padding-left: 16px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -32px; top: 8px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--ruby-red);
+    background: var(--bg-deep);
+  }
+  .timeline-item.highlight::before {
+    background: var(--ruby-red);
+    box-shadow: 0 0 12px rgba(204,52,45,0.5);
+  }
+  .timeline-ver {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--ruby-light);
+    font-weight: 700;
+  }
+  .timeline-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  .timeline-desc strong {
+    color: var(--text-primary);
+  }
+
+  /* ─── CONCEPT MAP ─── */
+  .concept-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .concept-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 28px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .concept-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .concept-card.red::before { background: var(--ruby-red); }
+  .concept-card.blue::before { background: var(--accent-blue); }
+  .concept-card.cyan::before { background: var(--accent-cyan); }
+  .concept-card.amber::before { background: var(--accent-amber); }
+  .concept-card.violet::before { background: var(--accent-violet); }
+  .concept-card.green::before { background: var(--accent-green); }
+
+  .concept-card h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .concept-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+  }
+  .concept-card .tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    margin-top: 12px;
+    letter-spacing: 0.5px;
+  }
+  .tag.tag-red { background: rgba(204,52,45,0.15); color: var(--ruby-light); }
+  .tag.tag-blue { background: rgba(91,141,239,0.15); color: var(--accent-blue); }
+  .tag.tag-cyan { background: rgba(78,205,196,0.15); color: var(--accent-cyan); }
+  .tag.tag-amber { background: rgba(242,169,59,0.15); color: var(--accent-amber); }
+  .tag.tag-violet { background: rgba(155,114,207,0.15); color: var(--accent-violet); }
+
+  /* ─── REMEMBERED SET COMPARISON ─── */
+  .rs-compare {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  @media (max-width: 768px) {
+    .rs-compare { grid-template-columns: 1fr; }
+  }
+  .rs-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+  .rs-box .rs-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+  .rs-box h4 {
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+  .rs-box .rs-granularity {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-amber);
+    margin-bottom: 10px;
+  }
+  .rs-box p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+  .rs-bar {
+    margin-top: 14px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.05);
+    overflow: hidden;
+  }
+  .rs-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+  }
+
+  /* ─── TALK CARDS ─── */
+  .talks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+  .talk-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    transition: border-color 0.3s;
+  }
+  .talk-card:hover {
+    border-color: rgba(204,52,45,0.3);
+  }
+  .talk-day {
+    flex-shrink: 0;
+    width: 48px; height: 48px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .talk-day .day-label { font-size: 9px; letter-spacing: 1px; opacity: 0.7; }
+  .talk-day .day-num { font-size: 18px; }
+  .talk-day.d1 { background: rgba(204,52,45,0.15); color: var(--ruby-light); }
+  .talk-day.d2 { background: rgba(91,141,239,0.15); color: var(--accent-blue); }
+  .talk-day.d3 { background: rgba(78,205,196,0.15); color: var(--accent-cyan); }
+
+  .talk-info h4 {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+  .talk-speaker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .talk-topics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .talk-topic {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+  }
+  .talk-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-top: 6px;
+  }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 24px 0;
+  }
+  .flow-node {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 13px;
+    text-align: center;
+    min-width: 140px;
+  }
+  .flow-node.active {
+    border-color: var(--ruby-red);
+    box-shadow: 0 0 20px rgba(204,52,45,0.15);
+  }
+  .flow-node .flow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .flow-arrow {
+    font-size: 20px;
+    color: var(--text-muted);
+  }
+
+  /* ─── GO COMPARISON ─── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    font-size: 13px;
+  }
+  .compare-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .compare-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    vertical-align: top;
+  }
+  .compare-table tr td:first-child {
+    color: var(--text-primary);
+    font-weight: 700;
+    width: 140px;
+  }
+  .compare-table .lang-ruby { color: var(--ruby-light); }
+  .compare-table .lang-go { color: var(--accent-cyan); }
+
+  /* ─── SEPARATOR ─── */
+  .sep {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border-subtle), transparent);
+    margin: 24px 0;
+  }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    text-align: center;
+    padding: 48px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .footer a { color: var(--ruby-light); text-decoration: none; }
+
+  /* ─── RELATION MAP ─── */
+  .relation-wrap {
+    position: relative;
+    margin: 32px 0;
+    padding: 32px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    border: 1px solid var(--border-subtle);
+  }
+  .relation-center {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .relation-hub {
+    display: inline-block;
+    background: var(--ruby-red);
+    color: white;
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: 16px;
+    padding: 12px 28px;
+    border-radius: 100px;
+    box-shadow: 0 4px 24px rgba(204,52,45,0.3);
+  }
+  .relation-spokes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+  }
+  .spoke {
+    text-align: center;
+    padding: 16px;
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: 10px;
+  }
+  .spoke-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .spoke-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 600px) {
+    .container { padding: 0 16px; }
+    .talks-grid { grid-template-columns: 1fr; }
+    .concept-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════ HERO ════════ -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">Infographic — April 2026</div>
+    <h1>Ruby <span class="accent">GC</span> の現在地</h1>
+    <p class="subtitle">Modular GC・Write Barrier・Remembered Set・Ractor<br>— すべてが繋がる RubyKaigi 2026 ガイドマップ</p>
+    <p class="venue">📍 函館・北海道 — April 22–24, 2026</p>
+  </div>
+</section>
+
+<div class="container">
+
+<!-- ════════ 1. TIMELINE ════════ -->
+<section class="section">
+  <div class="section-label">Section 01</div>
+  <div class="section-title">Ruby GC の進化</div>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <span class="timeline-ver">Ruby 1.8</span>
+      <div class="timeline-desc"><strong>Mark & Sweep（STW）</strong> — 単純だがすべてのスレッドを停止</div>
+    </div>
+    <div class="timeline-item">
+      <span class="timeline-ver">Ruby 2.0</span>
+      <div class="timeline-desc"><strong>Bitmap Marking</strong> — CoW フレンドリーに。FL_MARK ビットの空きが後の WB に繋がる</div>
+    </div>
+    <div class="timeline-item">
+      <span class="timeline-ver">Ruby 2.1</span>
+      <div class="timeline-desc"><strong>RGenGC（世代別 GC）</strong> — Write Barrier 導入。WB-protected / unprotected の概念を発明</div>
+    </div>
+    <div class="timeline-item">
+      <span class="timeline-ver">Ruby 2.2</span>
+      <div class="timeline-desc"><strong>Incremental GC（RincGC）</strong> — Major GC を分割実行。WB を使い三色マーキングの整合性を保証</div>
+    </div>
+    <div class="timeline-item">
+      <span class="timeline-ver">Ruby 2.7+</span>
+      <div class="timeline-desc"><strong>GC Compaction</strong> — オブジェクトを移動してフラグメンテーションを解消</div>
+    </div>
+    <div class="timeline-item highlight">
+      <span class="timeline-ver">Ruby 3.4</span>
+      <div class="timeline-desc"><strong>Modular GC</strong> — GC を共有ライブラリとして分離。<strong>MMTk</strong> 統合を同梱（実験的）</div>
+    </div>
+    <div class="timeline-item highlight">
+      <span class="timeline-ver">Ruby 4.x（進行中）</span>
+      <div class="timeline-desc"><strong>Next-Gen GC</strong> — MMTk が Default GC と同等性能に到達。Moving Immix、Ractor-Local GC の研究</div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 2. WRITE BARRIER ════════ -->
+<section class="section">
+  <div class="section-label">Section 02</div>
+  <div class="section-title">Write Barrier — なぜ必要か</div>
+
+  <div class="flow-row">
+    <div class="flow-node">
+      <span class="flow-label">OLD Object</span>
+      obj A
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node" style="border-color: var(--accent-amber);">
+      <span class="flow-label">YOUNG Object</span>
+      obj F
+    </div>
+    <div class="flow-arrow">⚠️</div>
+    <div class="flow-node active">
+      <span class="flow-label">Write Barrier</span>
+      参照を検出して<br>Remembered Set に記録
+    </div>
+  </div>
+
+  <div class="concept-grid" style="margin-top: 20px;">
+    <div class="concept-card cyan">
+      <h3>WB-Protected</h3>
+      <p>参照変更がすべて GC に通知される。Old 世代への昇格が可能。String, Array, Hash など主要クラスが該当。</p>
+      <span class="tag tag-cyan">Minor GC でスキップ可能</span>
+    </div>
+    <div class="concept-card amber">
+      <h3>WB-Unprotected</h3>
+      <p>C 拡張との互換性のため WB を挿入できないオブジェクト。Old に昇格不可。Minor GC のたびにスキャンが必要。</p>
+      <span class="tag tag-amber">互換性のための妥協</span>
+    </div>
+    <div class="concept-card violet">
+      <h3>Ruby の独自性</h3>
+      <p>「全オブジェクトに WB を要求しない」段階的導入戦略。これにより既存の C 拡張を壊さず世代別 GC を実現した。</p>
+      <span class="tag tag-violet">Gradual WB Insertion</span>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 3. REMEMBERED SET ════════ -->
+<section class="section">
+  <div class="section-label">Section 03</div>
+  <div class="section-title">Remembered Set の記録方式</div>
+  <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 24px;">
+    Write Barrier が old→young 参照を検出した後、<strong>どう記録するか</strong>の 3 つの戦略。
+  </p>
+
+  <div class="rs-compare">
+    <div class="rs-box">
+      <div class="rs-icon">🎯</div>
+      <h4>Object ベース</h4>
+      <div class="rs-granularity">粒度: オブジェクト単位</div>
+      <p>参照を持つオブジェクト自体をセットに登録。精度最高だが WB コスト・メモリが大きい。<br><strong>Ruby の現行方式。</strong></p>
+      <div class="rs-bar"><div class="rs-bar-fill" style="width:95%; background: var(--accent-cyan);"></div></div>
+      <div style="font-size:10px; color: var(--text-muted); margin-top:4px;">スキャン精度 ████████▒</div>
+    </div>
+    <div class="rs-box">
+      <div class="rs-icon">🃏</div>
+      <h4>Card ベース</h4>
+      <div class="rs-granularity">粒度: ~512 バイト</div>
+      <p>ヒープを小領域（カード）に分割し dirty ビットを立てるだけ。WB が極めて軽い。<br><strong>JVM HotSpot (G1GC) の方式。</strong></p>
+      <div class="rs-bar"><div class="rs-bar-fill" style="width:60%; background: var(--accent-amber);"></div></div>
+      <div style="font-size:10px; color: var(--text-muted); margin-top:4px;">スキャン精度 █████▒▒▒▒</div>
+    </div>
+    <div class="rs-box">
+      <div class="rs-icon">📄</div>
+      <h4>Page ベース</h4>
+      <div class="rs-granularity">粒度: ~4KB（ページ）</div>
+      <p>OS の mprotect で書き込み禁止にし、page fault で検出。アプリ側の WB コード不要だが trap が重い。</p>
+      <div class="rs-bar"><div class="rs-bar-fill" style="width:30%; background: var(--accent-violet);"></div></div>
+      <div style="font-size:10px; color: var(--text-muted); margin-top:4px;">スキャン精度 ██▒▒▒▒▒▒▒</div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 4. MODULAR GC + RACTOR ════════ -->
+<section class="section">
+  <div class="section-label">Section 04</div>
+  <div class="section-title">Modular GC × Ractor — 未来の交差点</div>
+
+  <div class="relation-wrap">
+    <div class="relation-center">
+      <span class="relation-hub">Ruby 4.x のメモリ管理</span>
+    </div>
+    <div class="relation-spokes">
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--ruby-light);">Modular GC</div>
+        <div class="spoke-desc">gc_impl.h API で GC を差し替え可能に。dlopen で共有ライブラリをロード</div>
+      </div>
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--accent-blue);">MMTk</div>
+        <div class="spoke-desc">汎用 GC フレームワーク。Moving Immix / StickyImmix 等のアルゴリズムを提供</div>
+      </div>
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--accent-cyan);">Ractor</div>
+        <div class="spoke-desc">Actor ベースの並列実行。各 Ractor に独自 GVL。オブジェクト空間の分離が課題</div>
+      </div>
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--accent-amber);">Write Barrier</div>
+        <div class="spoke-desc">世代別・インクリメンタル GC の正しさの根幹。C 拡張との互換性が制約に</div>
+      </div>
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--accent-violet);">Ractor-Local GC</div>
+        <div class="spoke-desc">Ractor ごとにヒープを分離し独立 GC。STW の影響範囲を限定する将来構想</div>
+      </div>
+      <div class="spoke">
+        <div class="spoke-label" style="color: var(--accent-green);">C 拡張の近代化</div>
+        <div class="spoke-desc">WB 対応・Compaction 対応の新 API へ移行。旧 API はサイレントに性能を阻害</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 5. GO COMPARISON ════════ -->
+<section class="section">
+  <div class="section-label">Section 05</div>
+  <div class="section-title">比較: Go の GC アプローチ</div>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="lang-ruby">Ruby</th>
+        <th class="lang-go">Go</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>GC 方式</td>
+        <td>世代別 Mark & Sweep<br>+ Incremental</td>
+        <td>非世代別 Concurrent<br>Tri-color Mark & Sweep</td>
+      </tr>
+      <tr>
+        <td>最新の進化</td>
+        <td>Modular GC / MMTk<br>GC 自体を差し替え可能に</td>
+        <td>Green Tea GC（Go 1.25）<br>Span ベースで局所性を改善</td>
+      </tr>
+      <tr>
+        <td>Write Barrier</td>
+        <td>常時有効（世代別のため）<br>Protected / Unprotected の二分</td>
+        <td>GC サイクル中のみ有効<br>~100μs の STW で ON/OFF</td>
+      </tr>
+      <tr>
+        <td>並行性</td>
+        <td>STW が Ractor 全体に波及<br>Ractor-Local GC が研究段階</td>
+        <td>Goroutine と並行動作<br>25% の CPU を GC に割当</td>
+      </tr>
+      <tr>
+        <td>設計思想</td>
+        <td>C 拡張の互換性を最重視<br>段階的改善（Gradual）</td>
+        <td>低レイテンシ最優先<br>世代別は不採用</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 6. RUBYKAIGI TALKS ════════ -->
+<section class="section">
+  <div class="section-label">Section 06</div>
+  <div class="section-title">RubyKaigi 2026 — 関連トーク マップ</div>
+  <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 24px;">
+    ここまでの GC トピックに直結する 6 つのセッション。
+  </p>
+
+  <div class="talks-grid">
+
+    <!-- Talk 1 -->
+    <div class="talk-card">
+      <div class="talk-day d2"><span class="day-label">DAY</span><span class="day-num">2</span></div>
+      <div class="talk-info">
+        <h4>Building the Next-Generation Garbage Collector in Ruby</h4>
+        <div class="talk-speaker">Peter Zhu @peterzhu2118 — Shopify → Figma</div>
+        <div class="talk-desc">MMTk が Default GC と同等性能に到達。Moving Immix、並列化、最適化手法を解説。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">Modular GC</span>
+          <span class="talk-topic">MMTk</span>
+          <span class="talk-topic">Moving Immix</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talk 2 -->
+    <div class="talk-card">
+      <div class="talk-day d3"><span class="day-label">DAY</span><span class="day-num">3</span></div>
+      <div class="talk-info">
+        <h4>A Write Barrier Validating GC for Ruby</h4>
+        <div class="talk-speaker">John Hawthorn @jhawthorn — Shopify</div>
+        <div class="talk-desc">WB の正しさを動的解析する専用 GC。WB の欠落・不正確さが引き起こすバグとその検出。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">Write Barrier</span>
+          <span class="talk-topic">GC 正当性</span>
+          <span class="talk-topic">C 拡張</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talk 3 -->
+    <div class="talk-card">
+      <div class="talk-day d1"><span class="day-label">DAY</span><span class="day-num">1</span></div>
+      <div class="talk-info">
+        <h4>Million-Agent Ruby: Ractor-Local GC in the Age of AI</h4>
+        <div class="talk-speaker">Justin Bowen @TonsOfFun</div>
+        <div class="talk-desc">Ractor-Local GC でヒープを分離し、STW の影響を切り離す。AI エージェントのスケーリングに応用。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">Ractor</span>
+          <span class="talk-topic">Local GC</span>
+          <span class="talk-topic">M:N Threading</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talk 4 -->
+    <div class="talk-card">
+      <div class="talk-day d2"><span class="day-label">DAY</span><span class="day-num">2</span></div>
+      <div class="talk-info">
+        <h4>Thread-Coordinated Ractors: The Pattern That Delivers</h4>
+        <div class="talk-speaker">Maciej Mensfeld @maciejmensfeld</div>
+        <div class="talk-desc">Karafka で Ractor を本番投入。メッセージデシリアライズを Ractor プールに移し 70% のスループット改善。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">Ractor 実用</span>
+          <span class="talk-topic">並列処理</span>
+          <span class="talk-topic">Karafka</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talk 5 -->
+    <div class="talk-card">
+      <div class="talk-day d3"><span class="day-label">DAY</span><span class="day-num">3</span></div>
+      <div class="talk-info">
+        <h4>From Ruby 2 to 4: Updating a C extension for a Modern VM</h4>
+        <div class="talk-speaker">Ivo Anjo @KnuX — Datadog</div>
+        <div class="talk-desc">C 拡張を新しい VM に対応させる実践。WB 対応・GC Compaction 対応の新 API と移行パターン。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">C 拡張</span>
+          <span class="talk-topic">Write Barrier</span>
+          <span class="talk-topic">Compaction</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talk 6 -->
+    <div class="talk-card">
+      <div class="talk-day d3"><span class="day-label">DAY</span><span class="day-num">3</span></div>
+      <div class="talk-info">
+        <h4>Making Hash Parallel, Thread-Safe and Fast!</h4>
+        <div class="talk-speaker">Benoit Daloze @eregontp</div>
+        <div class="talk-desc">Hash をスレッドセーフかつ並列に。Ractor 時代のデータ構造設計と並行性の課題。</div>
+        <div class="talk-topics">
+          <span class="talk-topic">並行データ構造</span>
+          <span class="talk-topic">Ractor</span>
+          <span class="talk-topic">Thread Safety</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ════════ 7. RECOMMENDED PATH ════════ -->
+<section class="section">
+  <div class="section-label">Section 07</div>
+  <div class="section-title">おすすめ回遊ルート</div>
+
+  <div class="concept-grid">
+    <div class="concept-card red">
+      <h3>🔴 GC の仕組みを深く知る</h3>
+      <p>
+        <strong>Day 2</strong> Peter Zhu「Next-Gen GC」で MMTk の全体像を掴む<br>
+        → <strong>Day 3</strong> John Hawthorn「WB Validating GC」で Write Barrier の正しさを学ぶ<br>
+        → <strong>Day 3</strong> Ivo Anjo「C extension 近代化」で実践に落とす
+      </p>
+    </div>
+    <div class="concept-card blue">
+      <h3>🔵 Ractor × 並列の未来を追う</h3>
+      <p>
+        <strong>Day 1</strong> Justin Bowen「Ractor-Local GC」で構想を知る<br>
+        → <strong>Day 2</strong> Maciej Mensfeld「Thread-Coordinated Ractors」で本番パターンを見る<br>
+        → <strong>Day 3</strong> Benoit Daloze「Hash Parallel」で並行データ構造を学ぶ
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ FOOTER ════════ -->
+<footer class="footer">
+  <p>RubyKaigi 2026 · 函館 · <a href="https://rubykaigi.org/2026/">rubykaigi.org/2026</a></p>
+  <p style="margin-top: 8px;">Created with Claude — conversation notes on Ruby GC, Write Barriers, Remembered Sets, and Go's Green Tea GC</p>
+</footer>
+
+</div>
+</body>
+</html>
